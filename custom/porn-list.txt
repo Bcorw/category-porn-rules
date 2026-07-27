@@ -1,2 +1,5 @@
 +.bad-example.com
 my-own-block-domain.net
++.hjw01.com
+telegram.me/hjw2026
+x.com/haijiaosq2024
