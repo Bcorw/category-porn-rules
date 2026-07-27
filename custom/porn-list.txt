@@ -1,0 +1,2 @@
++.bad-example.com
+my-own-block-domain.net
