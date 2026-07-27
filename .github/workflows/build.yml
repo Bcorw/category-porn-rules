@@ -1,0 +1,56 @@
+name: Build Custom Porn MRS
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 每天定时自动运行一次
+  workflow_dispatch:     # 支持手动点按钮触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Environment & Download Mihomo
+        run: |
+          mkdir -p output rules-temp
+          # 获取最新 Mihomo 核心版本号并下载，用于将文本编译为 .mrs
+          MIHOMO_VERSION=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          echo "Latest Mihomo version: $MIHOMO_VERSION"
+          wget -O mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/v$MIHOMO_VERSION/mihomo-linux-amd64-v$MIHOMO_VERSION.gz"
+          gzip -d mihomo.gz
+          chmod +x mihomo
+
+      - name: Fetch Official YAML & Merge Custom Rules
+        run: |
+          # 1. 下载 MetaCubeX 官方的 category-porn.yaml 源码
+          curl -L -o rules-temp/official.yaml "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-porn.yaml"
+
+          # 2. 提取官方 YAML 中的域名（自动去掉 'payload:'、行首空格和 '- '）
+          grep '^[[:space:]]*-[[:space:]]' rules-temp/official.yaml | sed 's/^[[:space:]]*-[[:space:]]*//' > rules-temp/clean_official.txt
+
+          # 3. 如果您有自定义的规则文件 (custom/porn-list.txt)，将其加入合并队列
+          if [ -f "custom/porn-list.txt" ]; then
+            echo "Merging custom rules..."
+            cat custom/porn-list.txt >> rules-temp/clean_official.txt
+          fi
+
+          # 4. 全局清洗：去掉注释、空行并去重，生成最终待编译的纯文本列表
+          grep -v '^\s*#' rules-temp/clean_official.txt | grep -v '^\s*$' | sort -u > rules-temp/merged.txt
+          
+          echo "Total domains to compile: $(wc -l < rules-temp/merged.txt)"
+
+      - name: Compile to MRS
+        run: |
+          # 使用 Mihomo 内核将整理好的文本编译为高效率的 .mrs 二进制文件
+          ./mihomo convert-ruleset domain text rules-temp/merged.txt output/category-porn.mrs
+          echo "MRS compilation completed successfully."
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'actions@github.com'
+          git add output/category-porn.mrs
+          git commit -m "Auto-update and merge porn rules: $(date +'%Y-%m-%d')" || exit 0
+          git push
